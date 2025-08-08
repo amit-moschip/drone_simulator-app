@@ -3,26 +3,18 @@ package com.example.dronesimulator;
 import static androidx.camera.lifecycle.ProcessCameraProvider.getInstance;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
-import android.content.ActivityNotFoundException;
 import android.content.ContentValues;
-import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.hardware.Camera;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.provider.MediaStore;
 import android.util.Log;
-import android.view.View;
-import android.widget.Button;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.camera.core.CameraProvider;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
@@ -37,38 +29,47 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-public class MainActivity extends AppCompatActivity {
-    private Button btnCapture;
+
+public class CaptureOnTimer extends AppCompatActivity {
+
     private PreviewView previewView;
     private ImageCapture imageCapture = null;
     private ExecutorService cameraExecutor;
+    private Handler handler;
+    private Runnable captureImage;
+    boolean isOn =false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
-        setContentView(R.layout.activity_main);
-
-        btnCapture = findViewById(R.id.btnCapture);
+        setContentView(R.layout.activity_capture_on_timer);
         previewView = findViewById(R.id.previewView);
-
         if (allPermissionsGranted()) {
-            startCamera();
+            handler = new Handler();
+            captureImage = new Runnable() {
+                @Override
+                public void run() {
+                    isOn = !isOn;
+                    startCamera(isOn);
+                    handler.postDelayed(this,10000);
+                }
+            };
+            handler.post(captureImage);
         } else {
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor();
+
     }
-    private void startCamera(){
+
+    private void startCamera(boolean isOn){
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = getInstance(this);
         cameraProviderFuture.addListener(()->{
             try {
@@ -83,7 +84,7 @@ public class MainActivity extends AppCompatActivity {
                 captureImage();
 
             }catch (Exception e){
-                Toast.makeText(MainActivity.this, "Failed to start camera", Toast.LENGTH_SHORT).show();
+                Toast.makeText(CaptureOnTimer.this, "Failed to start camera", Toast.LENGTH_SHORT).show();
             }
         }, ContextCompat.getMainExecutor(this));
     }
@@ -103,17 +104,17 @@ public class MainActivity extends AppCompatActivity {
         imageCapture.takePicture(OutputFileOption, ContextCompat.getMainExecutor(this), new ImageCapture.OnImageSavedCallback() {
             @Override
             public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
-                Toast.makeText(MainActivity.this, "Image saved to gallery!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(CaptureOnTimer.this, "Image saved to gallery!", Toast.LENGTH_SHORT).show();
             }
 
             @Override
             public void onError(@NonNull ImageCaptureException exception) {
-                Toast.makeText(MainActivity.this, "Failed to save image", Toast.LENGTH_SHORT).show();
+                Toast.makeText(CaptureOnTimer.this, "Failed to save image", Toast.LENGTH_SHORT).show();
             }
         });
 
-
     }
+
     private boolean allPermissionsGranted() {
         for (String permission : REQUIRED_PERMISSIONS) {
             if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
@@ -128,7 +129,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                startCamera();
+                startCamera(isOn);
             } else {
                 Toast.makeText(this, "Permissions not granted", Toast.LENGTH_SHORT).show();
                 finish();
@@ -136,14 +137,22 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private  void changeCameraState(boolean newValue){
+        startCamera(newValue);
+    }
+
+
     protected void onDestroy() {
         super.onDestroy();
         cameraExecutor.shutdown();
+        if(handler != null && captureImage != null){
+            handler.removeCallbacks(captureImage);
+        }
+        changeCameraState(false);
     }
     private static final int REQUEST_CODE_PERMISSIONS = 10;
     private static final String[] REQUIRED_PERMISSIONS = new String[]{
             Manifest.permission.CAMERA,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
-
 }
